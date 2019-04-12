@@ -18,19 +18,26 @@ def convert_model_instance_to_dict(instance, func_name="dict", callers=set(), fi
 
 	def handle_date_field(instance, field_name):
 		value = getattr(instance, field_name)
+		if not value:
+			return ""
 		return value.strftime("%Y-%m-%d") if value else ""
 
 	def handle_datetime_field(instance, field_name):
 		value = getattr(instance, field_name)
+		if not value:
+			return ""
 		return value.strftime("%Y-%m-%d %H:%M:%S") if value else ""
 
 	def handle_time_field(instance, field_name):
 		value = getattr(instance, field_name)
+		if not value:
+			return ""
 		return value.strftime("%H:%M:%S") if value else ""
 
 	def handle_foreign_key_field(instance, field_name):
-		field = model._meta.get_field(field_name)
 		value = getattr(instance, field_name)
+		if not value:
+			return {}
 		response = {}
 		if hasattr(value, 'dict') and callable(getattr(value, func_name)):
 			response = getattr(value, func_name)()
@@ -41,6 +48,10 @@ def convert_model_instance_to_dict(instance, func_name="dict", callers=set(), fi
 	def handle_many_to_many_field(instance, field_name):
 		response = []
 		many_related_manager = getattr(instance, field_name)
+		if not many_related_manager:
+			return []
+		if not hasattr(many_related_manager, 'all') or not callable(many_related_manager.all):
+			return []
 		related_instances = many_related_manager.all()
 		for related_instance in related_instances:
 			if hasattr(related_instance, 'dict') and callable(getattr(related_instance, func_name)):
@@ -71,10 +82,25 @@ def convert_model_instance_to_dict(instance, func_name="dict", callers=set(), fi
 	}
 
 	for field_name in fields:
-		field = model._meta.get_field(field_name)
-		field_type = type(field)
-		if field_type in function_map and callable(function_map[field_type]):
-			response[field_name] = function_map[field_type](instance=instance, field_name=field_name)
-		else:
-			response[field_name] = str(getattr(instance, field_name))
+
+		field = None
+		method = None
+
+		try:
+			field = model._meta.get_field(field_name)
+		except:
+			pass
+
+		if not field and hasattr(instance, field_name) and callable(getattr(instance, field_name)):
+			method = getattr(instance, field_name)
+
+		if field:
+			field_type = type(field)
+			if field_type in function_map and callable(function_map[field_type]):
+				response[field_name] = function_map[field_type](instance=instance, field_name=field_name)
+			else:
+				response[field_name] = str(getattr(instance, field_name))
+		elif method:
+			response[field_name] = method()
+
 	return response
